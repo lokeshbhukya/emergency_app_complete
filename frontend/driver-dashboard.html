@@ -53,6 +53,7 @@
 
     let driverLocation = { lat: 0, lng: 0 };
     let checkRequestsInterval = null;
+    const apiBase = "https://emergency-app-complete-6.onrender.com"; // Live backend URL
 
     async function updateStatus(available) {
       navigator.geolocation.getCurrentPosition(async (pos) => {
@@ -62,7 +63,7 @@
         };
 
         try {
-          await fetch("http://localhost:4000/driver/status", {
+          await fetch(`${apiBase}/driver/status`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ 
@@ -92,7 +93,7 @@
     function startCheckingRequests() {
       checkRequestsInterval = setInterval(async () => {
         try {
-          const res = await fetch(`http://localhost:4000/driver/pending-requests/${user._id}`);
+          const res = await fetch(`${apiBase}/driver/pending-requests/${user._id}`);
           if (!res.ok) {
             console.error('Server responded with status', res.status);
             return;
@@ -121,7 +122,7 @@
       requests.forEach((req) => {
         const card = document.createElement("div");
         card.className = "request-card";
-        card.innerHTML = `
+        card.innerHTML = ` 
           <p><strong>Name:</strong> ${req.customerName}</p>
           <p><strong>Phone:</strong> ${req.customerPhone}</p>
           <button onclick="viewCustomerLocation(${req.customerLocation.lat}, ${req.customerLocation.lng})">
@@ -142,7 +143,7 @@
 
     async function acceptRequest(requestId, customerId, customerName, customerPhone) {
       try {
-        const res = await fetch("http://localhost:4000/driver/accept-request", {
+        const res = await fetch(`${apiBase}/driver/accept-request`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
