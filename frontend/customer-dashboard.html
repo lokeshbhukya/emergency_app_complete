@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Customer Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .driver-card {
+      border: 1px solid #ddd;
+      padding: 15px;
+      margin-bottom: 10px;
+      border-radius: 5px;
+      background-color: #f9f9f9;
+    }
+    .driver-card button {
+      padding: 5px 10px;
+    }
+    #driver-details {
+      background-color: #d4edda;
+      border: 1px solid #c3e6cb;
+      border-radius: 5px;
+      padding: 15px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Customer Dashboard</h2>
+
+  <h3>Request Emergency Assistance</h3>
+  <button id="find-drivers-btn" onclick="findNearbyDrivers()">Find Nearby Drivers</button>
+
+  <h3>Available Drivers</h3>
+  <div id="drivers"></div>
+
+  <div id="driver-details" style="display: none;">
+    <h3>Your Driver:</h3>
+    <p>Name: <span id="driver-name"></span></p>
+    <p>Phone: <span id="driver-phone"></span></p>
+    <h4>Driver's Live Location:</h4>
+    <iframe id="driver-map" style="width: 100%; height: 400px;" src="" frameborder="0" allowfullscreen></iframe>
+  </div>
+
+  <script>
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    let customerLocation = { lat: 0, lng: 0 };
+    let currentDriverId = null;
+    let sentRequests = new Set();
+
+    function findNearbyDrivers() {
+      document.getElementById("find-drivers-btn").disabled = true;
+      document.getElementById("find-drivers-btn").textContent = "Finding drivers...";
+
+      navigator.geolocation.getCurrentPosition((pos) => {
+        customerLocation = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        };
+        fetchNearbyDrivers(customerLocation);
+      }, (err) => {
+        alert('Location access denied.');
+        document.getElementById("find-drivers-btn").disabled = false;
+        document.getElementById("find-drivers-btn").textContent = "Find Nearby Drivers";
+      });
+    }
+
+    async function fetchNearbyDrivers(location) {
+      try {
+        const res = await fetch("http://localhost:4000/customer/nearby-drivers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ location }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          updateDriversUI(data.drivers);
+        } else {
+          alert("No drivers found nearby.");
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Error finding drivers.");
+      } finally {
+        document.getElementById("find-drivers-btn").disabled = false;
+        document.getElementById("find-drivers-btn").textContent = "Find Nearby Drivers";
+      }
+    }
+
+    function updateDriversUI(drivers) {
+      const div = document.getElementById("drivers");
+      div.innerHTML = "";
+
+      if (drivers.length === 0) {
+        div.innerHTML = "<p>No available drivers nearby.</p>";
+        return;
+      }
+
+      drivers.forEach((driver) => {
+        const card = document.createElement("div");
+        card.className = "driver-card";
+
+        const alreadyRequested = sentRequests.has(driver._id);
+
+        card.innerHTML = `
+          <p><strong>Name:</strong> ${driver.name}</p>
+          <button 
+            id="request-btn-${driver._id}" 
+            onclick="sendRequest('${driver._id}')"
+            ${alreadyRequested ? 'disabled' : ''}
+          >
+            ${alreadyRequested ? 'Request Sent' : 'Request Driver'}
+          </button>
+        `;
+        div.appendChild(card);
+      });
+    }
+
+    async function sendRequest(driverId) {
+      const requestBtn = document.getElementById(`request-btn-${driverId}`);
+      requestBtn.textContent = "Sending...";
+      requestBtn.disabled = true;
+
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        customerLocation = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        };
+
+        const res = await fetch("http://localhost:4000/request", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customerId: user._id,
+            driverId,
+            customerLocation,
+          }),
+        });
+
+        const data = await res.json();
+        if (data.success) {
+          sentRequests.add(driverId);
+          requestBtn.textContent = "Request Sent";
+          currentDriverId = driverId;
+          startCheckingForAcceptance(driverId);
+        } else {
+          alert("Failed to send request.");
+          requestBtn.textContent = "Request Driver";
+          requestBtn.disabled = false;
+        }
+      }, (err) => {
+        console.error('Location error:', err);
+        alert('Location error.');
+        requestBtn.textContent = "Request Driver";
+        requestBtn.disabled = false;
+      });
+    }
+
+    function startCheckingForAcceptance(driverId) {
+      const checkInterval = setInterval(async () => {
+        try {
+          const res = await fetch(`http://localhost:4000/request/check-acceptance`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              customerId: user._id,
+              driverId: driverId
+            }),
+          });
+
+          const data = await res.json();
+          if (data.success && data.accepted) {
+            clearInterval(checkInterval);
+
+            document.getElementById("driver-name").textContent = data.driverName;
+            document.getElementById("driver-phone").textContent = data.driverPhone;
+            updateDriverMap(data.driverLocation);
+            document.getElementById("driver-details").style.display = "block";
+
+            startTrackingDriverLocation();
+          }
+        } catch (err) {
+          console.error('Error checking acceptance:', err);
+        }
+      }, 3000);
+    }
+
+    function updateDriverMap(location) {
+      if (!location || !location.lat || !location.lng) return;
+      const mapUrl = `https://www.google.com/maps?q=${location.lat},${location.lng}&z=15&output=embed`;
+      document.getElementById("driver-map").src = mapUrl;
+    }
+
+    function startTrackingDriverLocation() {
+      setInterval(async () => {
+        try {
+          const res = await fetch(`http://localhost:4000/driver/location/${currentDriverId}`);
+          const data = await res.json();
+          if (data.success && data.location) {
+            updateDriverMap(data.location);
+          }
+        } catch (err) {
+          console.error('Error fetching driver location:', err);
+        }
+      }, 5000);
+    }
+
+    window.onload = function() {
+      if (!user._id) {
+        alert("Please login first!");
+        window.location.href = "login.html";
+      }
+    };
+  </script>
+</body>
+</html>

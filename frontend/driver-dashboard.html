@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Driver Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .request-card {
+      border: 1px solid #ddd;
+      padding: 15px;
+      margin-bottom: 10px;
+      border-radius: 5px;
+      background-color: #f9f9f9;
+    }
+    .request-card button {
+      margin-right: 10px;
+      padding: 5px 10px;
+    }
+    .accepted {
+      background-color: #d4edda;
+      border-color: #c3e6cb;
+    }
+    #customer-map-container {
+      display: none;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Driver Dashboard</h2>
+  <div>
+    <button onclick="updateStatus(true)">Go Online</button>
+    <button onclick="updateStatus(false)">Go Offline</button>
+    <p id="status-indicator">Status: Offline</p>
+  </div>
+
+  <h3>Pending Requests:</h3>
+  <div id="requests"></div>
+
+  <div id="customer-map-container">
+    <h3>Customer Location:</h3>
+    <iframe id="customer-map" style="width: 100%; height: 400px;" src="" frameborder="0" allowfullscreen></iframe>
+  </div>
+
+  <div id="accepted-customer" style="display: none;">
+    <h3>Your Customer:</h3>
+    <p>Name: <span id="customer-name"></span></p>
+    <p>Phone: <span id="customer-phone"></span></p>
+  </div>
+
+  <script>
+    const user = JSON.parse(localStorage.getItem("driver") || "{}");
+
+    let driverLocation = { lat: 0, lng: 0 };
+    let checkRequestsInterval = null;
+
+    async function updateStatus(available) {
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        driverLocation = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        };
+
+        try {
+          await fetch("http://localhost:4000/driver/status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              driverId: user._id, 
+              available, 
+              location: driverLocation 
+            }),
+          });
+
+          document.getElementById("status-indicator").textContent = `Status: ${available ? 'Online' : 'Offline'}`;
+
+          if (available) {
+            startCheckingRequests();
+          } else {
+            if (checkRequestsInterval) {
+              clearInterval(checkRequestsInterval);
+            }
+          }
+        } catch (err) {
+          console.error('Status update error:', err);
+        }
+      }, (err) => {
+        alert('Allow location access to go online.');
+      });
+    }
+
+    function startCheckingRequests() {
+      checkRequestsInterval = setInterval(async () => {
+        try {
+          const res = await fetch(`http://localhost:4000/driver/pending-requests/${user._id}`);
+          if (!res.ok) {
+            console.error('Server responded with status', res.status);
+            return;
+          }
+
+          const data = await res.json();
+
+          if (data.success) {
+            updateRequestsUI(data.requests);
+          }
+        } catch (err) {
+          console.error('Error checking requests:', err);
+        }
+      }, 3000);
+    }
+
+    function updateRequestsUI(requests) {
+      const div = document.getElementById("requests");
+      div.innerHTML = "";
+
+      if (requests.length === 0) {
+        div.innerHTML = "<p>No pending requests.</p>";
+        return;
+      }
+
+      requests.forEach((req) => {
+        const card = document.createElement("div");
+        card.className = "request-card";
+        card.innerHTML = `
+          <p><strong>Name:</strong> ${req.customerName}</p>
+          <p><strong>Phone:</strong> ${req.customerPhone}</p>
+          <button onclick="viewCustomerLocation(${req.customerLocation.lat}, ${req.customerLocation.lng})">
+            View Location
+          </button>
+          <button onclick="acceptRequest('${req._id}', '${req.customerId._id}', '${req.customerName}', '${req.customerPhone}')">
+            Accept
+          </button>
+        `;
+        div.appendChild(card);
+      });
+    }
+
+    function viewCustomerLocation(lat, lng) {
+      document.getElementById("customer-map").src = `https://www.google.com/maps?q=${lat},${lng}&z=15&output=embed`;
+      document.getElementById("customer-map-container").style.display = "block";
+    }
+
+    async function acceptRequest(requestId, customerId, customerName, customerPhone) {
+      try {
+        const res = await fetch("http://localhost:4000/driver/accept-request", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            requestId,
+            driverId: user._id,
+            customerId
+          }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          document.getElementById("accepted-customer").style.display = "block";
+          document.getElementById("customer-name").textContent = customerName;
+          document.getElementById("customer-phone").textContent = customerPhone;
+          document.getElementById("requests").innerHTML = "";
+        } else {
+          alert("Failed to accept request.");
+        }
+      } catch (err) {
+        console.error('Error accepting request:', err);
+      }
+    }
+
+    window.onload = function() {
+      if (!user._id) {
+        alert("Please login first!");
+        window.location.href = "login.html";
+      }
+    };
+  </script>
+</body>
+</html>
