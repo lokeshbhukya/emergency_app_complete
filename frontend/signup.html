@@ -27,17 +27,23 @@
       const phone = document.getElementById("phone").value;
       const password = document.getElementById("password").value;
 
-      const res = await fetch("http://localhost:4000/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, phone, password, type }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert("Signup successful!");
-        location.href = "login.html?type=" + type;
-      } else {
-        alert(data.message);
+      try {
+        const res = await fetch("https://emergency-app-complete-6.onrender.com/signup", { // Updated URL
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, email, phone, password, type }),
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          alert("Signup successful!");
+          location.href = "login.html?type=" + type;
+        } else {
+          alert(data.message);
+        }
+      } catch (error) {
+        console.error('Signup error:', error);
+        alert("An error occurred. Please try again later.");
       }
     });
   </script>
