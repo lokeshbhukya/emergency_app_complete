@@ -46,6 +46,7 @@
     let customerLocation = { lat: 0, lng: 0 };
     let currentDriverId = null;
     let sentRequests = new Set();
+    const apiBase = "https://emergency-app-complete-6.onrender.com"; // Live backend URL
 
     function findNearbyDrivers() {
       document.getElementById("find-drivers-btn").disabled = true;
@@ -66,7 +67,7 @@
 
     async function fetchNearbyDrivers(location) {
       try {
-        const res = await fetch("http://localhost:4000/customer/nearby-drivers", {
+        const res = await fetch(`${apiBase}/customer/nearby-drivers`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ location }),
@@ -101,13 +102,12 @@
 
         const alreadyRequested = sentRequests.has(driver._id);
 
-        card.innerHTML = `
+        card.innerHTML = ` 
           <p><strong>Name:</strong> ${driver.name}</p>
           <button 
             id="request-btn-${driver._id}" 
             onclick="sendRequest('${driver._id}')"
-            ${alreadyRequested ? 'disabled' : ''}
-          >
+            ${alreadyRequested ? 'disabled' : ''}>
             ${alreadyRequested ? 'Request Sent' : 'Request Driver'}
           </button>
         `;
@@ -126,7 +126,7 @@
           lng: pos.coords.longitude,
         };
 
-        const res = await fetch("http://localhost:4000/request", {
+        const res = await fetch(`${apiBase}/request`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -158,7 +158,7 @@
     function startCheckingForAcceptance(driverId) {
       const checkInterval = setInterval(async () => {
         try {
-          const res = await fetch(`http://localhost:4000/request/check-acceptance`, {
+          const res = await fetch(`${apiBase}/request/check-acceptance`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -193,7 +193,7 @@
     function startTrackingDriverLocation() {
       setInterval(async () => {
         try {
-          const res = await fetch(`http://localhost:4000/driver/location/${currentDriverId}`);
+          const res = await fetch(`${apiBase}/driver/location/${currentDriverId}`);
           const data = await res.json();
           if (data.success && data.location) {
             updateDriverMap(data.location);
